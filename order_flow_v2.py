@@ -687,7 +687,7 @@ def get_current_price():
     """Fetch current BTC price from OKX"""
     try:
         url = "https://www.okx.com/api/v5/market/ticker"
-        params = {"instId": SYMBOL}          # OKX uses instId = "BTC-USDT"
+        params = {"instId": "BTC-USDT-SWAP}         
         
         response = requests.get(url, params=params, timeout=5)
         response.raise_for_status()
@@ -710,7 +710,7 @@ def fetch_candle_data(limit=200):
     try:
         url = "https://www.okx.com/api/v5/market/candles"
         params = {
-            "instId": SYMBOL,      # e.g. "BTC-USDT"
+            "instId": "BTC-USDt-SWAP",      # e.g. "BTC-USDT"
             "bar": "15m",          # 15 minute candles
             "limit": str(limit)
         }

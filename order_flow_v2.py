@@ -687,7 +687,7 @@ def get_current_price():
     """Fetch current BTC price"""
     try:
         url = "https://www.okx.com/api/v5/market/ticker"
-        params = {"symbol": SYMBOL}
+        params = {"instId": "BTC-USDT-SWAP"}
         response = requests.get(url, params=params, timeout=5)
         data = response.json()
         return float(data['price'])

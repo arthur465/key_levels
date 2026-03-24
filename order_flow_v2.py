@@ -686,7 +686,7 @@ def get_aggregated_orderflow():
 def get_current_price():
     """Fetch current BTC price"""
     try:
-        url = "https://api.binance.com/api/v3/ticker/price"
+        url = "https://www.okx.com/api/v5/market/ticker"
         params = {"symbol": SYMBOL}
         response = requests.get(url, params=params, timeout=5)
         data = response.json()
@@ -702,7 +702,7 @@ def fetch_candle_data(limit=200):
     Returns: list of {'time': datetime, 'open': float, 'high': float, 'low': float, 'close': float, 'volume': float}
     """
     try:
-        url = "https://api.binance.com/api/v3/klines"
+        url = "https://www.okx.com/api/v5/market/candles"
         params = {
             "symbol": SYMBOL,
             "interval": "15m",  # 15 minute candles

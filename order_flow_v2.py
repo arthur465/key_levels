@@ -683,52 +683,62 @@ def get_aggregated_orderflow():
 
 # ============= PRICE & CANDLE FETCHING =============
 
-def get_current_price(): """Fetch current BTC price from OKX""" try: url = "https://www.okx.com/api/v5/market/ticker" params = {"instId": "BTC-USDT-SWAP"}
+def get_current_price():
+    """Fetch current BTC price from OKX"""
+    try:
+        url = "https://www.okx.com/api/v5/market/ticker"
+        params = {"instId": SYMBOL}          # OKX uses instId = "BTC-USDT"
+        
+        response = requests.get(url, params=params, timeout=5)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        if data.get("code") == "0" and data.get("data"):
+            price = float(data["data"][0]["last"])
+            return price
+        else:
+            print(f"❌ OKX Price Error: {data.get('msg', data)}")
+            return None
+            
+    except Exception as e:
+        print(f"❌ Price fetch error: {e}")
+        return None
 
-response = requests.get(url, params=params, timeout=5)
-    data = response.json()
-
-    if data.get("code") == "0" and data.get("data"):
-        return float(data["data"][0]["last"])
-
-    print(f"❌ Unexpected OKX format: {data}")
-    return None
-
-except Exception as e:
-    print(f"❌ Price fetch error: {e}")
-    return None
-
-================= CANDLE FIX =================
-
-def fetch_candle_data(limit=200): """ Fetch recent candle data from OKX """ try: url = "https://www.okx.com/api/v5/market/candles" params = { "instId": "BTC-USDT-SWAP", "bar": "15m", "limit": str(limit) }
-
-response = requests.get(url, params=params, timeout=10)
-    data = response.json()
-
-    if data.get("code") != "0":
-        print(f"❌ OKX candle error: {data}")
+def fetch_candle_data(limit=200):
+    """Fetch recent 15m candle data from OKX for swing detection"""
+    try:
+        url = "https://www.okx.com/api/v5/market/candles"
+        params = {
+            "instId": SYMBOL,      # e.g. "BTC-USDT"
+            "bar": "15m",          # 15 minute candles
+            "limit": str(limit)
+        }
+        
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        if data.get("code") == "0" and data.get("data"):
+            candles = []
+            for candle in data["data"]:
+                candles.append({
+                    'time': datetime.fromtimestamp(int(candle[0]) / 1000, tz=timezone.utc),
+                    'open': float(candle[1]),
+                    'high': float(candle[2]),
+                    'low': float(candle[3]),
+                    'close': float(candle[4]),
+                    'volume': float(candle[5])
+                })
+            return candles
+        else:
+            print(f"❌ OKX Candle Error: {data.get('msg', data)}")
+            return []
+            
+    except Exception as e:
+        print(f"❌ Candle fetch error: {e}")
         return []
-
-    candles = []
-
-    for candle in data["data"]:
-        candles.append({
-            'time': datetime.fromtimestamp(int(candle[0]) / 1000, tz=timezone.utc),
-            'open': float(candle[1]),
-            'high': float(candle[2]),
-            'low': float(candle[3]),
-            'close': float(candle[4]),
-            'volume': float(candle[5])
-        })
-
-    # OKX returns newest first → FIX
-    candles.reverse()
-
-    return candles
-
-except Exception as e:
-    print(f"❌ Candle fetch error: {e}")
-    return []
 
 
 def send_telegram(message):

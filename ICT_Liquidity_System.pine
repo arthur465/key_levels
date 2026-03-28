@@ -1,0 +1,381 @@
+// ============================================================================
+// BTC ICT Liquidity System — TradingView Indicator
+// Pine Script v5
+//
+// Displays:
+//   • PDH / PDL / PWH / PWL as clean horizontal lines
+//   • Session highs/lows (London, NY)
+//   • Fractal-based Break of Structure (BOS) arrows
+//   • Auto-drawn Fibonacci OTE zone (0.71–0.79) on valid setups
+//   • HTF Bias dashboard (1H + 4H) in corner
+//   • Sweep labels when price tags a key level
+// ============================================================================
+//@version=5
+indicator(
+     title       = "ICT Liquidity System",
+     shorttitle  = "ICT-LS",
+     overlay     = true,
+     max_lines_count   = 50,
+     max_labels_count  = 50,
+     max_boxes_count   = 20
+ )
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────────────────────────────────────
+grp_levels   = "Key Levels"
+grp_fib      = "Fibonacci OTE"
+grp_bos      = "Structure"
+grp_htf      = "HTF Bias"
+grp_style    = "Style"
+
+show_pdh_pdl  = input.bool(true,  "Show PDH / PDL",       group=grp_levels)
+show_pwh_pwl  = input.bool(true,  "Show PWH / PWL",       group=grp_levels)
+show_sessions = input.bool(true,  "Show Session H/L",     group=grp_levels)
+show_sweeps   = input.bool(true,  "Show Sweep Labels",    group=grp_levels)
+
+show_fib      = input.bool(true,  "Show OTE Fib Zone",    group=grp_fib)
+fib_ote_lo    = input.float(0.705, "OTE Zone Low",  step=0.005, group=grp_fib)
+fib_ote_hi    = input.float(0.79,  "OTE Zone High", step=0.005, group=grp_fib)
+
+fractal_n     = input.int(2,  "Fractal Bars Each Side", minval=1, maxval=5, group=grp_bos)
+show_bos      = input.bool(true,  "Show BOS Arrows",      group=grp_bos)
+show_frac     = input.bool(false, "Show Fractal Dots",    group=grp_bos)
+
+htf_1         = input.timeframe("60",  "Bias TF 1",       group=grp_htf)
+htf_2         = input.timeframe("240", "Bias TF 2",       group=grp_htf)
+show_htf      = input.bool(true,  "Show HTF Dashboard",   group=grp_htf)
+
+col_bull      = input.color(color.new(#00c896, 0),   "Bullish Color",  group=grp_style)
+col_bear      = input.color(color.new(#ff4757, 0),   "Bearish Color",  group=grp_style)
+col_neutral   = input.color(color.new(#a0a0b0, 0),   "Neutral Color",  group=grp_style)
+col_pdh       = input.color(color.new(#ff4757, 70),  "PDH/PWH Color",  group=grp_style)
+col_pdl       = input.color(color.new(#00c896, 70),  "PDL/PWL Color",  group=grp_style)
+col_sess      = input.color(color.new(#ffa502, 60),  "Session Color",  group=grp_style)
+col_ote       = input.color(color.new(#845ef7, 80),  "OTE Zone Color", group=grp_style)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UTILITY
+// ─────────────────────────────────────────────────────────────────────────────
+_line(price, col, style, width, lbl) =>
+    var line ln = na
+    ln := line.new(bar_index - 300, price, bar_index + 30, price,
+         extend=extend.right, color=col, style=style, width=width)
+    var label lb = na
+    lb := label.new(bar_index + 2, price, lbl,
+         style=label.style_label_left,
+         color=color.new(color.black, 100),
+         textcolor=col,
+         size=size.small)
+    [ln, lb]
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KEY LEVELS — DAILY (PDH / PDL)
+// ─────────────────────────────────────────────────────────────────────────────
+pdh = request.security(syminfo.tickerid, "D", high[1],  lookahead=barmerge.lookahead_on)
+pdl = request.security(syminfo.tickerid, "D", low[1],   lookahead=barmerge.lookahead_on)
+
+var line ln_pdh = na
+var line ln_pdl = na
+var label lb_pdh = na
+var label lb_pdl = na
+
+if show_pdh_pdl and barstate.islast
+    line.delete(ln_pdh), label.delete(lb_pdh)
+    line.delete(ln_pdl), label.delete(lb_pdl)
+    ln_pdh := line.new(bar_index - 300, pdh, bar_index + 60, pdh,
+         extend=extend.right, color=col_pdh, style=line.style_dashed, width=1)
+    lb_pdh := label.new(bar_index + 2, pdh, "PDH",
+         style=label.style_label_left, color=color.new(color.black,100),
+         textcolor=col_pdh, size=size.small)
+    ln_pdl := line.new(bar_index - 300, pdl, bar_index + 60, pdl,
+         extend=extend.right, color=col_pdl, style=line.style_dashed, width=1)
+    lb_pdl := label.new(bar_index + 2, pdl, "PDL",
+         style=label.style_label_left, color=color.new(color.black,100),
+         textcolor=col_pdl, size=size.small)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KEY LEVELS — WEEKLY (PWH / PWL)
+// ─────────────────────────────────────────────────────────────────────────────
+pwh = request.security(syminfo.tickerid, "W", high[1],  lookahead=barmerge.lookahead_on)
+pwl = request.security(syminfo.tickerid, "W", low[1],   lookahead=barmerge.lookahead_on)
+
+var line ln_pwh = na
+var line ln_pwl = na
+var label lb_pwh = na
+var label lb_pwl = na
+
+if show_pwh_pwl and barstate.islast
+    line.delete(ln_pwh), label.delete(lb_pwh)
+    line.delete(ln_pwl), label.delete(lb_pwl)
+    ln_pwh := line.new(bar_index - 300, pwh, bar_index + 60, pwh,
+         extend=extend.right, color=col_pdh, style=line.style_dotted, width=2)
+    lb_pwh := label.new(bar_index + 2, pwh, "PWH",
+         style=label.style_label_left, color=color.new(color.black,100),
+         textcolor=col_pdh, size=size.small)
+    ln_pwl := line.new(bar_index - 300, pwl, bar_index + 60, pwl,
+         extend=extend.right, color=col_pdl, style=line.style_dotted, width=2)
+    lb_pwl := label.new(bar_index + 2, pwl, "PWL",
+         style=label.style_label_left, color=color.new(color.black,100),
+         textcolor=col_pdl, size=size.small)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SESSION HIGHS / LOWS  (London 07-12 UTC, New York 12-21 UTC)
+// ─────────────────────────────────────────────────────────────────────────────
+london_h   = request.security(syminfo.tickerid, "60", 
+     ta.highest(high, 5)[1], lookahead=barmerge.lookahead_on)
+london_l   = request.security(syminfo.tickerid, "60",
+     ta.lowest(low,  5)[1], lookahead=barmerge.lookahead_on)
+
+var line ln_sh = na, var line ln_sl = na
+var label lb_sh = na, var label lb_sl = na
+
+if show_sessions and barstate.islast
+    line.delete(ln_sh), label.delete(lb_sh)
+    line.delete(ln_sl), label.delete(lb_sl)
+    ln_sh := line.new(bar_index - 80, london_h, bar_index + 30, london_h,
+         color=col_sess, style=line.style_dashed, width=1)
+    lb_sh := label.new(bar_index + 2, london_h, "Sess H",
+         style=label.style_label_left, color=color.new(color.black,100),
+         textcolor=col_sess, size=size.tiny)
+    ln_sl := line.new(bar_index - 80, london_l, bar_index + 30, london_l,
+         color=col_sess, style=line.style_dashed, width=1)
+    lb_sl := label.new(bar_index + 2, london_l, "Sess L",
+         style=label.style_label_left, color=color.new(color.black,100),
+         textcolor=col_sess, size=size.tiny)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FRACTALS
+// ─────────────────────────────────────────────────────────────────────────────
+n = fractal_n
+
+frac_high = true
+frac_low  = true
+for i = 1 to n
+    if high[n] <= high[n - i] or high[n] <= high[n + i]
+        frac_high := false
+    if low[n]  >= low[n - i]  or low[n]  >= low[n + i]
+        frac_low  := false
+
+if show_frac and frac_high
+    label.new(bar_index[n], high[n], "▲",
+         style=label.style_label_down, color=color.new(color.black,100),
+         textcolor=col_bear, size=size.tiny)
+
+if show_frac and frac_low
+    label.new(bar_index[n], low[n], "▼",
+         style=label.style_label_up, color=color.new(color.black,100),
+         textcolor=col_bull, size=size.tiny)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BREAK OF STRUCTURE (BOS)
+// A bearish BOS = close below the most recent fractal low
+// A bullish BOS = close above the most recent fractal high
+// ─────────────────────────────────────────────────────────────────────────────
+var float last_frac_high = na
+var float last_frac_low  = na
+var int   last_fh_bar    = na
+var int   last_fl_bar    = na
+
+if frac_high
+    last_frac_high := high[n]
+    last_fh_bar    := bar_index[n]
+
+if frac_low
+    last_frac_low := low[n]
+    last_fl_bar   := bar_index[n]
+
+bearish_bos = not na(last_frac_low)  and close < last_frac_low  and close[1] >= last_frac_low
+bullish_bos = not na(last_frac_high) and close > last_frac_high and close[1] <= last_frac_high
+
+if show_bos and bearish_bos
+    label.new(bar_index, high, "BOS ▼",
+         style=label.style_label_down,
+         color=color.new(col_bear, 80),
+         textcolor=col_bear,
+         size=size.small)
+
+if show_bos and bullish_bos
+    label.new(bar_index, low, "BOS ▲",
+         style=label.style_label_up,
+         color=color.new(col_bull, 80),
+         textcolor=col_bull,
+         size=size.small)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FIBONACCI OTE ZONE
+// After a bearish BOS: anchor from swing high → BOS close, draw 0.71-0.79 zone
+// After a bullish BOS: anchor from swing low  → BOS close, draw 0.71-0.79 zone
+// Zone persists until price exits or a new BOS forms
+// ─────────────────────────────────────────────────────────────────────────────
+var float fib_swing_hi  = na
+var float fib_swing_lo  = na
+var string fib_dir      = na   // "short" | "long"
+var box   ote_box       = na
+var line  ote_line_mid  = na
+var label ote_label     = na
+
+// On bearish BOS: swing high = last fractal high, swing low = BOS close
+if bearish_bos and not na(last_frac_high)
+    fib_swing_hi := last_frac_high
+    fib_swing_lo := close
+    fib_dir      := "short"
+
+// On bullish BOS: swing low = last fractal low, swing high = BOS close
+if bullish_bos and not na(last_frac_low)
+    fib_swing_lo := last_frac_low
+    fib_swing_hi := close
+    fib_dir      := "long"
+
+// Calculate OTE levels
+fib_range    = fib_swing_hi - fib_swing_lo
+ote_low_lvl  = fib_dir == "short" ? fib_swing_hi - fib_range * fib_ote_hi  : fib_swing_lo + fib_range * fib_ote_lo
+ote_high_lvl = fib_dir == "short" ? fib_swing_hi - fib_range * fib_ote_lo  : fib_swing_lo + fib_range * fib_ote_hi
+ote_mid_lvl  = fib_dir == "short" ? fib_swing_hi - fib_range * 0.71        : fib_swing_lo + fib_range * 0.71
+
+// Price inside OTE zone?
+in_ote = close >= ote_low_lvl and close <= ote_high_lvl
+
+// Draw / update OTE box
+if show_fib and not na(fib_dir) and barstate.islast
+    box.delete(ote_box)
+    line.delete(ote_line_mid)
+    label.delete(ote_label)
+
+    zone_col = fib_dir == "short" ? col_bear : col_bull
+    ote_box := box.new(
+         left         = bar_index - 60,
+         top          = ote_high_lvl,
+         right        = bar_index + 40,
+         bottom       = ote_low_lvl,
+         border_color = color.new(col_ote, 40),
+         border_width = 1,
+         bgcolor      = color.new(col_ote, 88)
+     )
+    ote_line_mid := line.new(
+         bar_index - 60, ote_mid_lvl, bar_index + 40, ote_mid_lvl,
+         color=color.new(col_ote, 30), style=line.style_dashed, width=1
+     )
+    ote_label := label.new(
+         bar_index + 2, ote_mid_lvl,
+         (fib_dir == "short" ? "🔴 OTE 0.71" : "🟢 OTE 0.71"),
+         style=label.style_label_left,
+         color=color.new(color.black, 100),
+         textcolor=color.new(col_ote, 0),
+         size=size.small
+     )
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SWEEP LABELS — when price tags PDH / PDL / PWH / PWL
+// ─────────────────────────────────────────────────────────────────────────────
+tol = syminfo.mintick * 20
+
+if show_sweeps
+    if high >= pdh - tol and high <= pdh + pdh * 0.003
+        label.new(bar_index, high, "💧PDH",
+             style=label.style_label_down,
+             color=color.new(col_pdh, 75), textcolor=col_pdh, size=size.tiny)
+    if low <= pdl + tol and low >= pdl - pdl * 0.003
+        label.new(bar_index, low, "💧PDL",
+             style=label.style_label_up,
+             color=color.new(col_pdl, 75), textcolor=col_pdl, size=size.tiny)
+    if high >= pwh - tol and high <= pwh + pwh * 0.003
+        label.new(bar_index, high, "💧PWH",
+             style=label.style_label_down,
+             color=color.new(col_pdh, 75), textcolor=col_pdh, size=size.tiny)
+    if low <= pwl + tol and low >= pwl - pwl * 0.003
+        label.new(bar_index, low, "💧PWL",
+             style=label.style_label_up,
+             color=color.new(col_pdl, 75), textcolor=col_pdl, size=size.tiny)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HTF BIAS ENGINE
+// Determines bias from Higher High / Higher Low structure on 1H and 4H
+// ─────────────────────────────────────────────────────────────────────────────
+_htf_bias(tf) =>
+    h = request.security(syminfo.tickerid, tf, high,  lookahead=barmerge.lookahead_off)
+    l = request.security(syminfo.tickerid, tf, low,   lookahead=barmerge.lookahead_off)
+    hh = ta.highest(h, 20)
+    ll = ta.lowest(l,  20)
+    ph = ta.highestbars(h, 20) != 0  // recent high not at very end
+    pl = ta.lowestbars(l,  20) != 0
+    // Simplified: compare last 2 pivots via ta.pivothigh / ta.pivotlow
+    ph1 = ta.pivothigh(h, 3, 3)
+    ph2 = ta.pivothigh(h, 3, 3)[6]
+    pl1 = ta.pivotlow(l,  3, 3)
+    pl2 = ta.pivotlow(l,  3, 3)[6]
+    bullish  = not na(ph1) and not na(ph2) and ph1 > ph2 and
+               not na(pl1) and not na(pl2) and pl1 > pl2
+    bearish  = not na(ph1) and not na(ph2) and ph1 < ph2 and
+               not na(pl1) and not na(pl2) and pl1 < pl2
+    bullish ? 1 : bearish ? -1 : 0
+
+bias_1h = _htf_bias(htf_1)
+bias_4h = _htf_bias(htf_2)
+
+bias_str(b) =>
+    b == 1 ? "▲ BULL" : b == -1 ? "▼ BEAR" : "─ NEUT"
+
+bias_col(b) =>
+    b == 1 ? col_bull : b == -1 ? col_bear : col_neutral
+
+aligned     = bias_1h == bias_4h and bias_1h != 0
+align_str   = aligned ? "  ✓ ALIGNED" : "  ~ MIXED"
+align_col   = aligned ? col_bull : col_neutral
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HTF DASHBOARD TABLE (top-right corner)
+// ─────────────────────────────────────────────────────────────────────────────
+var table dash = na
+
+if show_htf and barstate.islast
+    table.delete(dash)
+    dash := table.new(
+         position  = position.top_right,
+         columns   = 2,
+         rows      = 4,
+         bgcolor   = color.new(#0d0d14, 10),
+         border_color = color.new(#2a2a3a, 80),
+         border_width = 1,
+         frame_color  = color.new(#2a2a3a, 60),
+         frame_width  = 1
+     )
+
+    // Header
+    table.cell(dash, 0, 0, "HTF BIAS",
+         text_color=color.new(#a0a0b0, 0), text_size=size.small,
+         bgcolor=color.new(#1a1a2e, 20), text_halign=text.align_left)
+    table.cell(dash, 1, 0, align_str,
+         text_color=align_col, text_size=size.small,
+         bgcolor=color.new(#1a1a2e, 20), text_halign=text.align_right)
+
+    // 4H row
+    table.cell(dash, 0, 1, "4H",
+         text_color=color.new(#a0a0b0, 0), text_size=size.small,
+         bgcolor=color.new(#0d0d14, 40), text_halign=text.align_left)
+    table.cell(dash, 1, 1, bias_str(bias_4h),
+         text_color=bias_col(bias_4h), text_size=size.small,
+         bgcolor=color.new(#0d0d14, 40), text_halign=text.align_right)
+
+    // 1H row
+    table.cell(dash, 0, 2, "1H",
+         text_color=color.new(#a0a0b0, 0), text_size=size.small,
+         bgcolor=color.new(#0d0d14, 40), text_halign=text.align_left)
+    table.cell(dash, 1, 2, bias_str(bias_1h),
+         text_color=bias_col(bias_1h), text_size=size.small,
+         bgcolor=color.new(#0d0d14, 40), text_halign=text.align_right)
+
+    // OTE row
+    ote_status  = not na(fib_dir) ? (fib_dir == "short" ? "🔴 SHORT" : "🟢 LONG") : "─"
+    ote_st_col  = not na(fib_dir) ? (fib_dir == "short" ? col_bear : col_bull) : col_neutral
+    table.cell(dash, 0, 3, "SETUP",
+         text_color=color.new(#a0a0b0, 0), text_size=size.small,
+         bgcolor=color.new(#0d0d14, 40), text_halign=text.align_left)
+    table.cell(dash, 1, 3, ote_status,
+         text_color=ote_st_col, text_size=size.small,
+         bgcolor=color.new(#0d0d14, 40), text_halign=text.align_right)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BACKGROUND HIGHLIGHT when price is inside OTE zone
+// ─────────────────────────────────────────────────────────────────────────────
+bgcolor(in_ote and show_fib ? color.new(col_ote, 94) : na, title="OTE Zone Background")

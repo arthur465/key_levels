@@ -1,0 +1,8 @@
+ccxt==4.2.45
+pandas==2.2.0
+numpy==1.26.4
+aiohttp==3.9.3
+python-dotenv==1.0.1
+schedule==1.2.1
+pytz==2024.1
+websocket-client==1.7.0
